@@ -124,7 +124,15 @@ const ToolPanel: React.FC = () => {
   const handleStartService = async () => {
     setIsStartingService(true);
     try {
-      const result = await (window as any).electron?.ocr?.start(serviceDir);
+      let config = { httpPort: 8766, wsPort: 8765 };
+      try {
+        const saved = localStorage.getItem('ocr-settings');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          config = { httpPort: parsed.httpPort || 8766, wsPort: parsed.wsPort || 8765 };
+        }
+      } catch { /* ignore */ }
+      const result = await (window as any).electron?.ocr?.start(serviceDir, config);
       if (result?.success) {
         addToast({ type: 'success', message: result.message });
         await checkOcrStatus();
@@ -1000,7 +1008,13 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
         setIsStartingService(false);
         return;
       }
-      const result = await (window as any).electron?.ocr?.start(serviceDir);
+      const result = await (window as any).electron?.ocr?.start(serviceDir, {
+        httpPort: settings.httpPort,
+        wsPort: settings.wsPort,
+        pythonPath: settings.pythonPath,
+        autoRestart: settings.autoRestart,
+        maxRestarts: settings.maxRestarts,
+      });
       if (result?.success) {
         addToast({ type: 'success', message: result.message });
         await checkServiceStatus();
