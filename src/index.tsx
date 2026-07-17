@@ -38,6 +38,18 @@ const plugin = {
 if (typeof window !== 'undefined') {
   (window as any).pluginRegistry = (window as any).pluginRegistry || {};
   (window as any).pluginRegistry[plugin.id] = plugin;
+
+  const pluginData = (window as any).__PLUGIN_DATA__;
+  if (pluginData) {
+    const root = document.getElementById('root');
+    if (root) {
+      if (ReactDOM.createRoot) {
+        ReactDOM.createRoot(root).render(<React.StrictMode><ToolPanel /></React.StrictMode>);
+      } else {
+        ReactDOM.render(<ToolPanel />, root);
+      }
+    }
+  }
 }
 
 export default plugin;

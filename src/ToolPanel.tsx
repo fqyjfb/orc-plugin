@@ -80,6 +80,7 @@ const ToolPanel: React.FC = () => {
   const [installResult, setInstallResult] = useState<{ success: boolean; output: string; error?: string } | null>(null);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'ocr' | 'settings'>('ocr');
+  const [serviceDir, setServiceDir] = useState<string>('');
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
 
@@ -93,6 +94,11 @@ const ToolPanel: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const pluginData = (window as any).__PLUGIN_DATA__;
+    if (pluginData?.pluginDir) {
+      const pythonServiceDir = require('path').join(pluginData.pluginDir, 'python-service');
+      setServiceDir(pythonServiceDir);
+    }
     checkOcrStatus();
     loadHistory();
   }, []);
@@ -118,7 +124,7 @@ const ToolPanel: React.FC = () => {
   const handleStartService = async () => {
     setIsStartingService(true);
     try {
-      const result = await (window as any).electron?.ocr?.start();
+      const result = await (window as any).electron?.ocr?.start(serviceDir);
       if (result?.success) {
         addToast({ type: 'success', message: result.message });
         await checkOcrStatus();
@@ -155,7 +161,7 @@ const ToolPanel: React.FC = () => {
     setShowDiagnoseModal(true);
     setDiagnoseResult(null);
     try {
-      const result = await (window as any).electron?.ocr?.diagnose();
+      const result = await (window as any).electron?.ocr?.diagnose(serviceDir);
       const finalResult = result || { success: false, output: '', error: '诊断功能不可用' };
       setDiagnoseResult(finalResult);
       if (finalResult.success) {
@@ -181,7 +187,7 @@ const ToolPanel: React.FC = () => {
     setShowInstallModal(true);
     setInstallResult(null);
     try {
-      const result = await (window as any).electron?.ocr?.installDeps();
+      const result = await (window as any).electron?.ocr?.installDeps(serviceDir);
       const finalResult = result || { success: false, output: '', error: '安装功能不可用' };
       setInstallResult(finalResult);
       if (finalResult.success) {
@@ -264,7 +270,7 @@ const ToolPanel: React.FC = () => {
     setSelectedBlockIndex(null);
 
     try {
-      const result: OcrResult = await (window as any).electron?.ocr?.recognize(imageBase64);
+      const result: OcrResult = await (window as any).electron?.ocr?.recognize(imageBase64, serviceDir);
 
       if (currentRequestId !== requestIdRef.current) {
         return;
@@ -291,7 +297,7 @@ const ToolPanel: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [addToast, saveToHistory]);
+  }, [addToast, saveToHistory, serviceDir]);
 
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
