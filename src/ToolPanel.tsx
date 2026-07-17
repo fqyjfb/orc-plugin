@@ -96,7 +96,7 @@ const ToolPanel: React.FC = () => {
   useEffect(() => {
     const pluginData = (window as any).__PLUGIN_DATA__;
     if (pluginData?.pluginDir) {
-      const pythonServiceDir = require('path').join(pluginData.pluginDir, 'python-service');
+      const pythonServiceDir = pluginData.pluginDir + '/python-service';
       setServiceDir(pythonServiceDir);
     }
     checkOcrStatus();

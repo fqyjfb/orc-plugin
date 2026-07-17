@@ -12,9 +12,11 @@ interface PluginContext {
   };
 }
 
+let rootInstance: ReactDOM.Root | null = null;
+
 const render = (container: HTMLElement, options?: { theme?: 'light' | 'dark' }) => {
-  const root = ReactDOM.createRoot(container);
-  root.render(
+  rootInstance = ReactDOM.createRoot(container);
+  rootInstance.render(
     <React.StrictMode>
       <ToolPanel />
     </React.StrictMode>
@@ -22,8 +24,10 @@ const render = (container: HTMLElement, options?: { theme?: 'light' | 'dark' }) 
 };
 
 const unmount = (container: HTMLElement) => {
-  const root = ReactDOM.createRoot(container);
-  root.unmount();
+  if (rootInstance) {
+    rootInstance.unmount();
+    rootInstance = null;
+  }
 };
 
 const plugin = {
@@ -44,7 +48,8 @@ if (typeof window !== 'undefined') {
     const root = document.getElementById('root');
     if (root) {
       if (ReactDOM.createRoot) {
-        ReactDOM.createRoot(root).render(<React.StrictMode><ToolPanel /></React.StrictMode>);
+        rootInstance = ReactDOM.createRoot(root);
+        rootInstance.render(<React.StrictMode><ToolPanel /></React.StrictMode>);
       } else {
         ReactDOM.render(<ToolPanel />, root);
       }
