@@ -943,8 +943,13 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
   const [installResult, setInstallResult] = useState<{ success: boolean; output: string; error?: string } | null>(null);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [serviceDir, setServiceDir] = useState<string>('');
 
   useEffect(() => {
+    const pluginData = (window as any).__PLUGIN_DATA__;
+    if (pluginData?.pluginDir) {
+      setServiceDir(pluginData.pluginDir + '/python-service');
+    }
     const saved = localStorage.getItem('ocr-settings');
     if (saved) {
       try {
@@ -995,7 +1000,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
         setIsStartingService(false);
         return;
       }
-      const result = await (window as any).electron?.ocr?.start();
+      const result = await (window as any).electron?.ocr?.start(serviceDir);
       if (result?.success) {
         addToast({ type: 'success', message: result.message });
         await checkServiceStatus();
@@ -1055,7 +1060,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
     setShowDiagnoseModal(true);
     setDiagnoseResult(null);
     try {
-      const result = await (window as any).electron?.ocr?.diagnose();
+      const result = await (window as any).electron?.ocr?.diagnose(serviceDir);
       const finalResult = result || { success: false, output: '', error: '诊断功能不可用' };
       setDiagnoseResult(finalResult);
       if (finalResult.success) {
@@ -1081,7 +1086,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
     setShowInstallModal(true);
     setInstallResult(null);
     try {
-      const result = await (window as any).electron?.ocr?.installDeps();
+      const result = await (window as any).electron?.ocr?.installDeps(serviceDir);
       const finalResult = result || { success: false, output: '', error: '安装功能不可用' };
       setInstallResult(finalResult);
       if (finalResult.success) {
@@ -1142,15 +1147,12 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div className="flex items-center gap-2 p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-        <div className="w-5 h-5 flex items-center justify-center text-blue-500">
-          <Scan size={16} />
-        </div>
+      <div className="flex items-center p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
         <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">OCR识别设置</h2>
       </div>
 
       <div className="divide-y divide-gray-100 dark:divide-gray-700">
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center justify-between px-3 py-2">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-700 dark:text-gray-300">服务状态</span>
             {serviceStatus === null ? (
@@ -1176,95 +1178,89 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
               <button
                 onClick={handleStartService}
                 disabled={isStartingService || hasUnsavedChanges}
-                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
               >
                 {isStartingService ? (
                   <RefreshCw className="w-3 h-3 animate-spin" />
                 ) : (
                   <Play className="w-3 h-3" />
                 )}
-                {isStartingService ? '启动中...' : '启动服务'}
+                {isStartingService ? '启动中...' : '启动'}
               </button>
             )}
             {serviceStatus?.available && (
               <button
                 onClick={handleStopService}
-                className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-600 text-xs rounded-md transition-colors flex items-center gap-1.5"
+                className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-600 text-xs rounded-md transition-colors flex items-center gap-1"
               >
                 <Square className="w-3 h-3" />
-                停止服务
+                停止
               </button>
             )}
             <button
               onClick={checkServiceStatus}
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
               title="刷新状态"
             >
-              <RefreshCw className="w-4 h-4 text-gray-500" />
+              <RefreshCw className="w-3 h-3 text-gray-500" />
             </button>
           </div>
         </div>
 
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm text-gray-700 dark:text-gray-300">服务端口配置</span>
+        <div className="px-3 py-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm text-gray-700 dark:text-gray-300">端口配置</span>
             {serviceStatus?.available && (
-              <span className="text-xs text-amber-600">（服务运行中，修改设置需停止服务）</span>
+              <span className="text-xs text-amber-600">（运行中，修改需停止服务）</span>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <RefreshCw className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-600 dark:text-gray-400">HTTP 端口</span>
-              </div>
-              <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">HTTP 端口</span>
+              <div className="flex items-center gap-1.5">
                 <input
                   type="number"
                   value={settings.httpPort}
                   onChange={(e) => handleSettingChange('httpPort', parseInt(e.target.value) || 0)}
-                  className="w-20 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                  className="w-16 px-2 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
                   min="1"
                   max="65535"
                 />
                 <button
                   onClick={() => handleCheckPort(settings.httpPort, 'http')}
                   disabled={isCheckingPort}
-                  className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                   title="检测端口"
                 >
                   {isCheckingPort ? (
-                    <RefreshCw className="w-4 h-4 text-gray-400 animate-spin" />
+                    <RefreshCw className="w-3 h-3 text-gray-400 animate-spin" />
                   ) : (
-                    getPortCheckIcon('http', settings.httpPort) || <RefreshCw className="w-4 h-4 text-gray-400" />
+                    getPortCheckIcon('http', settings.httpPort) || <RefreshCw className="w-3 h-3 text-gray-400" />
                   )}
                 </button>
               </div>
             </div>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <RefreshCw className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-600 dark:text-gray-400">WebSocket 端口</span>
-              </div>
-              <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">WebSocket 端口</span>
+              <div className="flex items-center gap-1.5">
                 <input
                   type="number"
                   value={settings.wsPort}
                   onChange={(e) => handleSettingChange('wsPort', parseInt(e.target.value) || 0)}
-                  className="w-20 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                  className="w-16 px-2 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
                   min="1"
                   max="65535"
                 />
                 <button
                   onClick={() => handleCheckPort(settings.wsPort, 'ws')}
                   disabled={isCheckingPort}
-                  className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
                   title="检测端口"
                 >
                   {isCheckingPort ? (
-                    <RefreshCw className="w-4 h-4 text-gray-400 animate-spin" />
+                    <RefreshCw className="w-3 h-3 text-gray-400 animate-spin" />
                   ) : (
-                    getPortCheckIcon('ws', settings.wsPort) || <RefreshCw className="w-4 h-4 text-gray-400" />
+                    getPortCheckIcon('ws', settings.wsPort) || <RefreshCw className="w-3 h-3 text-gray-400" />
                   )}
                 </button>
               </div>
@@ -1272,29 +1268,23 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-gray-400" />
-            <span className="text-sm text-gray-700 dark:text-gray-300">空闲超时（分钟）</span>
-          </div>
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="text-sm text-gray-700 dark:text-gray-300">空闲超时（分钟）</span>
           <div className="flex items-center gap-2">
             <input
               type="number"
               value={settings.idleTimeoutMinutes}
               onChange={(e) => handleSettingChange('idleTimeoutMinutes', parseInt(e.target.value) || 0)}
-              className="w-20 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+              className="w-16 px-2 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
               min="1"
               max="60"
             />
-            <span className="text-xs text-gray-500">服务空闲 {settings.idleTimeoutMinutes} 分钟后自动停止</span>
+            <span className="text-xs text-gray-500">{settings.idleTimeoutMinutes} 分钟后自动停止</span>
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-gray-400" />
-            <span className="text-sm text-gray-700 dark:text-gray-300">自动重启</span>
-          </div>
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="text-sm text-gray-700 dark:text-gray-300">自动重启</span>
           <button
             onClick={() => handleSettingChange('autoRestart', !settings.autoRestart)}
             className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
@@ -1310,54 +1300,50 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
         </div>
 
         {settings.autoRestart && (
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-700 dark:text-gray-300 ml-6">最大重启次数</span>
-            </div>
+          <div className="flex items-center justify-between px-3 py-2">
+            <span className="text-sm text-gray-700 dark:text-gray-300">最大重启次数</span>
             <input
               type="number"
               value={settings.maxRestarts}
               onChange={(e) => handleSettingChange('maxRestarts', parseInt(e.target.value) || 0)}
-              className="w-20 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+              className="w-16 px-2 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
               min="0"
               max="10"
             />
           </div>
         )}
 
-        <div className="px-4 py-3">
+        <div className="px-3 py-2">
           <div className="flex items-center gap-2 mb-2">
-            <RefreshCw className="w-4 h-4 text-gray-400" />
             <span className="text-sm text-gray-700 dark:text-gray-300">Python 解释器路径</span>
             <span className="text-xs text-gray-500">（留空使用系统默认）</span>
           </div>
-          <div className="flex items-center gap-2 ml-6">
+          <div className="flex items-center gap-2">
             <input
               type="text"
               value={settings.pythonPath}
               onChange={(e) => handleSettingChange('pythonPath', e.target.value)}
-              className="flex-1 px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+              className="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"
               placeholder="例如: C:\Python39\python.exe"
             />
             <button
               onClick={handleSelectPythonPath}
-              className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 text-xs rounded-md transition-colors"
+              className="px-2 py-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 text-xs rounded-md transition-colors"
             >
               浏览
             </button>
           </div>
         </div>
 
-        <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700/50">
+        <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700/50">
           <div className="flex items-center gap-2 mb-2">
-            <HelpCircle className="w-4 h-4 text-gray-400" />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">故障排查</span>
           </div>
-          <div className="flex gap-2 ml-6">
+          <div className="flex gap-2">
             <button
               onClick={handleDiagnose}
               disabled={isDiagnosing}
-              className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
             >
               {isDiagnosing ? (
                 <RefreshCw className="w-3 h-3 animate-spin" />
@@ -1369,7 +1355,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
             <button
               onClick={handleInstallDeps}
               disabled={isInstalling}
-              className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              className="px-2 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
             >
               {isInstalling ? (
                 <RefreshCw className="w-3 h-3 animate-spin" />
@@ -1381,10 +1367,10 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
           </div>
         </div>
 
-        <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
+        <div className="px-3 py-2 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={handleReset}
-            className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+            className="px-2 py-1 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
           >
             重置默认
           </button>
@@ -1395,9 +1381,8 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
             <button
               onClick={handleSave}
               disabled={!hasUnsavedChanges || serviceStatus?.available}
-              className="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <RefreshCw className="w-4 h-4" />
               保存设置
             </button>
           </div>
