@@ -22,15 +22,26 @@ def check_python_version():
     print("[OK] Python version meets requirements")
     return True
 
-def check_dependency(module_name, package_name=None):
-    """Check if a single dependency is installed"""
+def check_dependency(module_name, package_name=None, import_names=None):
+    """Check if a single dependency is installed and importable"""
     package_name = package_name or module_name
     spec = importlib.util.find_spec(module_name)
     if spec is None:
         print(f"[FAIL] {package_name} not installed")
         return False
-    print(f"[OK] {package_name} installed")
-    return True
+    
+    try:
+        module = importlib.import_module(module_name)
+        if import_names:
+            for name in import_names:
+                if not hasattr(module, name):
+                    print(f"[FAIL] {package_name} installed but missing {name} (corrupted installation?)")
+                    return False
+        print(f"[OK] {package_name} installed")
+        return True
+    except Exception as e:
+        print(f"[FAIL] {package_name} installed but import failed: {e}")
+        return False
 
 def check_dependencies():
     """Check all dependencies"""
@@ -39,16 +50,16 @@ def check_dependencies():
     print("=" * 60)
 
     dependencies = [
-        ("fastapi", "fastapi"),
-        ("uvicorn", "uvicorn"),
-        ("pydantic", "pydantic"),
-        ("rapidocr_onnxruntime", "rapidocr-onnxruntime"),
-        ("PIL", "Pillow"),
+        ("fastapi", "fastapi", ["FastAPI", "APIRouter"]),
+        ("uvicorn", "uvicorn", ["run"]),
+        ("pydantic", "pydantic", ["BaseModel"]),
+        ("rapidocr_onnxruntime", "rapidocr-onnxruntime", []),
+        ("PIL", "Pillow", ["Image"]),
     ]
 
     all_installed = True
-    for module_name, package_name in dependencies:
-        if not check_dependency(module_name, package_name):
+    for module_name, package_name, import_names in dependencies:
+        if not check_dependency(module_name, package_name, import_names):
             all_installed = False
 
     return all_installed
