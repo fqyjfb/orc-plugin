@@ -12,6 +12,13 @@ def main():
     print("Installing OCR Service Dependencies")
     print("=" * 60)
     
+    py_version = sys.version_info
+    print(f"[INFO] Python Version: {py_version.major}.{py_version.minor}.{py_version.micro}")
+    
+    if py_version.major >= 3 and py_version.minor >= 13:
+        print("[WARN] Python 3.13+ detected. Some packages may have compatibility issues.")
+        print("[WARN] Recommended: Python 3.8 - 3.12 for best compatibility")
+    
     force_reinstall = "--force" in sys.argv
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
