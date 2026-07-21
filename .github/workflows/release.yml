@@ -1,4 +1,4 @@
-name: Release
+name: Create Release
 
 on:
   push:
@@ -6,46 +6,39 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 9
+          node-version: '24.x'
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
 
-      - name: Build
-        run: pnpm run build
+      - name: Build plugin
+        run: node build.mjs
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: plugin-build
-          path: dist/
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: plugin-build
-          path: dist/
+      - name: Create zip archive
+        run: zip -r plugin-orc.zip dist manifest.json
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: ncipollo/release-action@v1
         with:
-          files: dist/index.js
+          name: Release ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}
+          body: |
+            ## Changes
+            - Build dist files
+            - Update plugin manifest
+          draft: false
+          prerelease: false
+          artifacts: 'plugin-orc.zip'
