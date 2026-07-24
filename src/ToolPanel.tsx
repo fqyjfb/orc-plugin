@@ -1300,17 +1300,17 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
         <div className="flex items-center justify-between px-3 py-2">
           <span className="text-sm text-gray-700 dark:text-gray-300">自动重启</span>
           <button
-            onClick={() => handleSettingChange('autoRestart', !settings.autoRestart)}
-            className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
-              settings.autoRestart ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+          onClick={() => handleSettingChange('autoRestart', !settings.autoRestart)}
+          className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+            settings.autoRestart ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+          }`}
+        >
+          <span
+            className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+              settings.autoRestart ? 'translate-x-6' : ''
             }`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
-                settings.autoRestart ? 'translate-x-7' : 'translate-x-1'
-              }`}
-            />
-          </button>
+          />
+        </button>
         </div>
 
         {settings.autoRestart && (
