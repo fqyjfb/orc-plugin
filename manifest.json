@@ -1,7 +1,7 @@
 {
   "id": "plugin-orc",
   "name": "OCR识别",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "OCR文字识别工具，支持图片上传、粘贴识别、历史记录管理",
   "author": "ToolBox Team",
   "entry": "dist/index.js",
