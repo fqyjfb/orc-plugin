@@ -22,7 +22,7 @@ jobs:
           node-version: '24.x'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build plugin
         run: node build.mjs
@@ -39,6 +39,8 @@ jobs:
             ## Changes
             - Build dist files
             - Update plugin manifest
+            - Include python-service directory
           draft: false
           prerelease: false
           artifacts: 'plugin-orc.zip'
+          allowUpdates: true
