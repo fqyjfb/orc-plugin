@@ -96,7 +96,7 @@ const ToolPanel: React.FC = () => {
   useEffect(() => {
     const pluginData = (window as any).__PLUGIN_DATA__;
     if (pluginData?.pluginDir) {
-      const pythonServiceDir = pluginData.pluginDir + '/python-service';
+      const pythonServiceDir = pluginData.pluginDir + '/dist/python-service';
       setServiceDir(pythonServiceDir);
     }
     checkOcrStatus();
@@ -956,7 +956,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
   useEffect(() => {
     const pluginData = (window as any).__PLUGIN_DATA__;
     if (pluginData?.pluginDir) {
-      setServiceDir(pluginData.pluginDir + '/python-service');
+      setServiceDir(pluginData.pluginDir + '/dist/python-service');
     }
     const saved = localStorage.getItem('ocr-settings');
     if (saved) {
