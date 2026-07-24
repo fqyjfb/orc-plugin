@@ -1,7 +1,7 @@
 {
   "id": "plugin-orc",
   "name": "OCR识别",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "OCR文字识别工具，支持图片上传、粘贴识别、历史记录管理",
   "author": "ToolBox Team",
   "entry": "dist/index.js",
@@ -12,5 +12,7 @@
   "categories": ["工具"],
   "tags": ["ocr", "text", "recognition", "image"],
   "githubRepo": "fqyjfb/orc-plugin",
-  "isBeta": false
+  "isBeta": false,
+  "width": 880,
+  "height": 600
 }
