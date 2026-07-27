@@ -10,7 +10,6 @@ import subprocess
 import importlib.util
 
 def check_python_version():
-    """Check Python version"""
     print("=" * 60)
     print("Python Version Check")
     print("=" * 60)
@@ -23,7 +22,6 @@ def check_python_version():
     return True
 
 def check_dependency(module_name, package_name=None, import_names=None):
-    """Check if a single dependency is installed and importable"""
     package_name = package_name or module_name
     spec = importlib.util.find_spec(module_name)
     if spec is None:
@@ -32,10 +30,16 @@ def check_dependency(module_name, package_name=None, import_names=None):
     
     try:
         module = importlib.import_module(module_name)
+        module_file = getattr(module, '__file__', None)
+        if module_file is None:
+            print(f"[FAIL] {package_name} installed but corrupted (namespace package, missing __init__.py)")
+            print(f"       修复方法: 运行 'python install_deps.py --force'")
+            return False
         if import_names:
             for name in import_names:
                 if not hasattr(module, name):
-                    print(f"[FAIL] {package_name} installed but missing {name} (corrupted installation?)")
+                    print(f"[FAIL] {package_name} installed but missing {name} (corrupted)")
+                    print(f"       修复方法: 运行 'python install_deps.py --force'")
                     return False
         print(f"[OK] {package_name} installed")
         return True
@@ -44,7 +48,6 @@ def check_dependency(module_name, package_name=None, import_names=None):
         return False
 
 def check_dependencies():
-    """Check all dependencies"""
     print("\n" + "=" * 60)
     print("Dependencies Check")
     print("=" * 60)
@@ -65,7 +68,6 @@ def check_dependencies():
     return all_installed
 
 def check_port(port=8766):
-    """Check if port is occupied"""
     print("\n" + "=" * 60)
     print(f"Port {port} Check")
     print("=" * 60)
@@ -98,7 +100,6 @@ def check_port(port=8766):
         return True
 
 def check_service_files():
-    """Check if service files exist"""
     print("\n" + "=" * 60)
     print("Service Files Check")
     print("=" * 60)
@@ -152,17 +153,12 @@ def main():
     print("\n" + "=" * 60)
     if all_passed:
         print("All checks passed! Service should start normally.")
-        print("\nIf service still fails to start, try:")
-        print("  1. Run manually: python python-service/main.py")
-        print("  2. Check error messages")
-        print("  3. Reinstall dependencies: pip install -r python-service/requirements.txt")
     else:
         print("Some checks failed. Please resolve the issues above.")
-        print("\nCommon solutions:")
-        print("  1. Install missing dependencies:")
-        print("     pip install -r python-service/requirements.txt")
-        print("  2. If port is occupied, close the occupying program or change config")
-        print("  3. Ensure Python version >= 3.8")
+        print("\n快速修复:")
+        print("  1. 在插件设置页面点击 '安装依赖' 按钮")
+        print("  2. 或手动运行: python install_deps.py --force")
+        print("  3. 如果仍然失败, 请检查网络连接")
     print("=" * 60)
 
     return 0 if all_passed else 1
