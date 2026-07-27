@@ -25,23 +25,29 @@ logger = logging.getLogger(__name__)
 
 def check_imports():
     missing = []
-    for module_name, symbols in [
-        ('fastapi', ['FastAPI']),
-        ('uvicorn', ['run']),
-        ('pydantic', ['BaseModel']),
-        ('PIL', ['Image']),
-    ]:
+    checks = [
+        ('fastapi', 'FastAPI'),
+        ('uvicorn', 'run'),
+        ('pydantic', 'BaseModel'),
+    ]
+    for module_name, symbol in checks:
         try:
             mod = __import__(module_name)
             if getattr(mod, '__file__', None) is None:
-                missing.append(f"{module_name} (corrupted: namespace package)")
+                missing.append(f"{module_name} (corrupted)")
                 continue
-            for sym in symbols:
-                if not hasattr(mod, sym):
-                    missing.append(f"{module_name} (missing {sym})")
-                    break
+            if not hasattr(mod, symbol):
+                missing.append(f"{module_name} (missing {symbol})")
         except ImportError:
             missing.append(f"{module_name} (not installed)")
+
+    try:
+        from PIL import Image
+        if getattr(Image, '__file__', None) is None:
+            missing.append("PIL.Image (corrupted)")
+    except ImportError:
+        missing.append("PIL (not installed)")
+
     return missing
 
 missing_deps = check_imports()

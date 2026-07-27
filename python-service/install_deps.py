@@ -41,6 +41,12 @@ def cleanup_all_corrupted(site_packages):
 
 def verify_package(module_name, import_names=None):
     try:
+        if module_name == 'PIL':
+            from PIL import Image
+            if getattr(Image, '__file__', None) is None:
+                return False, f"{module_name} is corrupted"
+            return True, f"{module_name} OK"
+
         module = __import__(module_name)
         module_file = getattr(module, '__file__', None)
         if module_file is None:
