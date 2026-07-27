@@ -191,11 +191,12 @@ const ToolPanel: React.FC = () => {
   };
 
   const handleInstallDeps = async (force = false) => {
+    const safeForce = typeof force === 'boolean' ? force : false;
     setIsInstalling(true);
     setShowInstallModal(true);
     setInstallResult(null);
     try {
-      const result = await (window as any).electron?.ocr?.installDeps(serviceDir, force);
+      const result = await (window as any).electron?.ocr?.installDeps(serviceDir, safeForce);
       const finalResult = result || { success: false, output: '', error: '安装功能不可用' };
       setInstallResult(finalResult);
       if (finalResult.success) {
@@ -1096,11 +1097,12 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
   };
 
   const handleInstallDeps = async (force = false) => {
+    const safeForce = typeof force === 'boolean' ? force : false;
     setIsInstalling(true);
     setShowInstallModal(true);
     setInstallResult(null);
     try {
-      const result = await (window as any).electron?.ocr?.installDeps(serviceDir, force);
+      const result = await (window as any).electron?.ocr?.installDeps(serviceDir, safeForce);
       const finalResult = result || { success: false, output: '', error: '安装功能不可用' };
       setInstallResult(finalResult);
       if (finalResult.success) {
