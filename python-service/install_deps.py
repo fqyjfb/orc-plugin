@@ -103,11 +103,24 @@ def main():
         if force_reinstall:
             install_cmd.insert(-3, "--upgrade")
         
-        result = subprocess.run(install_cmd, capture_output=True, text=True)
+        process = subprocess.Popen(
+            install_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
         
-        if result.returncode != 0:
-            print(f"[ERROR] pip install failed:")
-            print(result.stderr)
+        for line in process.stdout:
+            line = line.rstrip()
+            if line:
+                print(line, flush=True)
+        
+        process.wait()
+        
+        if process.returncode != 0:
+            print(f"[ERROR] pip install failed with exit code: {process.returncode}")
             return 1
         
         print("\n[INFO] Verifying installation...")

@@ -50,13 +50,9 @@ interface OcrResult {
 }
 
 const MAX_HISTORY_COUNT = 20;
-const PRIMARY_COLOR = '#3b82f6';
 const TEXT_PRIMARY = '#111827';
 const TEXT_SECONDARY = '#6b7280';
 const TEXT_TERTIARY = '#9ca3af';
-const ERROR_COLOR = '#dc2626';
-const SUCCESS_COLOR = '#059669';
-const WARNING_COLOR = '#f59e0b';
 
 const ToolPanel: React.FC = () => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -79,6 +75,7 @@ const ToolPanel: React.FC = () => {
   const [isInstalling, setIsInstalling] = useState(false);
   const [installResult, setInstallResult] = useState<{ success: boolean; output: string; error?: string } | null>(null);
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [installProgress, setInstallProgress] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'ocr' | 'settings'>('ocr');
   const [serviceDir, setServiceDir] = useState<string>('');
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -93,17 +90,7 @@ const ToolPanel: React.FC = () => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  useEffect(() => {
-    const pluginData = (window as any).__PLUGIN_DATA__;
-    if (pluginData?.pluginDir) {
-      const pythonServiceDir = pluginData.pluginDir + '/dist/python-service';
-      setServiceDir(pythonServiceDir);
-    }
-    checkOcrStatus();
-    loadHistory();
-  }, []);
-
-  const checkOcrStatus = async () => {
+  const checkOcrStatus = useCallback(async () => {
     try {
       const result = await (window as any).electron?.ocr?.status();
       if (result) {
@@ -119,27 +106,63 @@ const ToolPanel: React.FC = () => {
         canManualStart: true,
       });
     }
+  }, []);
+
+  useEffect(() => {
+    const pluginData = (window as any).__PLUGIN_DATA__;
+    if (pluginData?.pluginDir) {
+      const pythonServiceDir = pluginData.pluginDir + '/dist/python-service';
+      setServiceDir(pythonServiceDir);
+    }
+    checkOcrStatus();
+    loadHistory();
+
+    return () => {
+      stopProgressPolling();
+    };
+  }, []);
+
+  const loadHistory = () => {
+    const saved = localStorage.getItem('ocr-history');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as OcrHistoryItem[];
+        setHistory(parsed);
+      } catch {
+        console.error('解析历史记录失败');
+      }
+    }
   };
+
+  const getServiceConfig = useCallback(() => {
+    let config = { httpPort: 8766, wsPort: 8765, pythonPath: '', autoRestart: true, maxRestarts: 3 };
+    try {
+      const saved = localStorage.getItem('ocr-settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        config = {
+          httpPort: parsed.httpPort || 8766,
+          wsPort: parsed.wsPort || 8765,
+          pythonPath: parsed.pythonPath || '',
+          autoRestart: parsed.autoRestart !== false,
+          maxRestarts: parsed.maxRestarts || 3,
+        };
+      }
+    } catch { /* ignore */ }
+    return config;
+  }, []);
 
   const handleStartService = async () => {
     setIsStartingService(true);
     try {
-      let config = { httpPort: 8766, wsPort: 8765 };
-      try {
-        const saved = localStorage.getItem('ocr-settings');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          config = { httpPort: parsed.httpPort || 8766, wsPort: parsed.wsPort || 8765 };
-        }
-      } catch { /* ignore */ }
+      const config = getServiceConfig();
       const result = await (window as any).electron?.ocr?.start(serviceDir, config);
       if (result?.success) {
         addToast({ type: 'success', message: result.message });
-        await checkOcrStatus();
       } else {
         addToast({ type: 'error', message: result?.message || '启动失败，请检查Python环境配置' });
-        await checkOcrStatus();
       }
+      await checkOcrStatus();
     } catch (error) {
       console.error('启动服务失败:', error);
       addToast({ type: 'error', message: '启动服务异常: ' + String(error) });
@@ -154,7 +177,6 @@ const ToolPanel: React.FC = () => {
       const result = await (window as any).electron?.ocr?.stop();
       if (result?.success) {
         addToast({ type: 'info', message: result.message });
-        await checkOcrStatus();
       } else {
         addToast({ type: 'error', message: result?.message || '停止失败' });
       }
@@ -162,6 +184,7 @@ const ToolPanel: React.FC = () => {
       console.error('停止服务失败:', error);
       addToast({ type: 'error', message: '停止服务异常: ' + String(error) });
     }
+    await checkOcrStatus();
   };
 
   const handleDiagnose = async () => {
@@ -190,11 +213,36 @@ const ToolPanel: React.FC = () => {
     }
   };
 
+  const installProgressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startProgressPolling = useCallback(() => {
+    if (installProgressTimerRef.current) {
+      clearInterval(installProgressTimerRef.current);
+    }
+    installProgressTimerRef.current = setInterval(async () => {
+      try {
+        const result = await (window as any).electron?.ocr?.getInstallProgress();
+        if (result?.progress) {
+          setInstallProgress(result.progress);
+        }
+      } catch {}
+    }, 500);
+  }, []);
+
+  const stopProgressPolling = useCallback(() => {
+    if (installProgressTimerRef.current) {
+      clearInterval(installProgressTimerRef.current);
+      installProgressTimerRef.current = null;
+    }
+  }, []);
+
   const handleInstallDeps = async (force = false) => {
     const safeForce = typeof force === 'boolean' ? force : false;
     setIsInstalling(true);
     setShowInstallModal(true);
     setInstallResult(null);
+    setInstallProgress('');
+    startProgressPolling();
     try {
       const result = await (window as any).electron?.ocr?.installDeps(serviceDir, safeForce);
       const finalResult = result || { success: false, output: '', error: '安装功能不可用' };
@@ -214,19 +262,8 @@ const ToolPanel: React.FC = () => {
       });
       addToast({ type: 'error', message: '依赖安装运行异常' });
     } finally {
+      stopProgressPolling();
       setIsInstalling(false);
-    }
-  };
-
-  const loadHistory = () => {
-    const saved = localStorage.getItem('ocr-history');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as OcrHistoryItem[];
-        setHistory(parsed);
-      } catch {
-        console.error('解析历史记录失败');
-      }
     }
   };
 
@@ -399,6 +436,65 @@ const ToolPanel: React.FC = () => {
     setIsEditing(!isEditing);
   };
 
+  const renderServiceControl = () => {
+    if (ocrStatus === null) {
+      return (
+        <span className="text-xs text-text-tertiary flex items-center gap-1">
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          检查服务状态...
+        </span>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2">
+        <div className={`px-2 py-1 rounded-full text-xs flex items-center gap-1.5 ${
+          ocrStatus.available ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+        }`}>
+          {ocrStatus.available ? (
+            <CheckCircle className="w-3 h-3" />
+          ) : (
+            <AlertCircle className="w-3 h-3" />
+          )}
+          {ocrStatus.available ? '服务运行中' : '服务未运行'}
+        </div>
+        
+        {ocrStatus.canManualStart && !ocrStatus.available && (
+          <button
+            onClick={handleStartService}
+            disabled={isStartingService}
+            className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50"
+          >
+            {isStartingService ? (
+              <RefreshCw className="w-3 h-3 animate-spin" />
+            ) : (
+              <Play className="w-3 h-3" />
+            )}
+            {isStartingService ? '启动中...' : '启动服务'}
+          </button>
+        )}
+        
+        {ocrStatus.available && (
+          <button
+            onClick={handleStopService}
+            className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-600 text-xs rounded-lg transition-colors flex items-center gap-1"
+          >
+            <Square className="w-3 h-3" />
+            停止
+          </button>
+        )}
+
+        <button
+          onClick={() => setShowServiceDetails(!showServiceDetails)}
+          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+          title="服务详情"
+        >
+          {showServiceDetails ? <ChevronUp className="w-4 h-4 text-text-tertiary" /> : <ChevronDown className="w-4 h-4 text-text-tertiary" />}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full min-h-full bg-white dark:bg-gray-800 overflow-hidden">
       <ToastContainer toasts={toasts} removeToast={removeToast} addToast={addToast} />
@@ -432,59 +528,7 @@ const ToolPanel: React.FC = () => {
           </button>
         </div>
         <div className="flex items-center gap-2">
-          {ocrStatus === null && (
-            <span className="text-xs text-text-tertiary flex items-center gap-1">
-              <RefreshCw className="w-3 h-3 animate-spin" />
-              检查服务状态...
-            </span>
-          )}
-          {ocrStatus !== null && (
-            <div className="flex items-center gap-2">
-              <div className={`px-2 py-1 rounded-full text-xs flex items-center gap-1.5 ${
-                ocrStatus.available ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-              }`}>
-                {ocrStatus.available ? (
-                  <CheckCircle className="w-3 h-3" />
-                ) : (
-                  <AlertCircle className="w-3 h-3" />
-                )}
-                {ocrStatus.available ? '服务就绪' : '服务未运行'}
-              </div>
-              
-              {ocrStatus.canManualStart && (
-                <button
-                  onClick={handleStartService}
-                  disabled={isStartingService}
-                  className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50"
-                >
-                  {isStartingService ? (
-                    <RefreshCw className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Play className="w-3 h-3" />
-                  )}
-                  {isStartingService ? '启动中...' : '启动服务'}
-                </button>
-              )}
-              
-              {!ocrStatus.canManualStart && ocrStatus.available && (
-                <button
-                  onClick={handleStopService}
-                  className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-600 text-xs rounded-lg transition-colors flex items-center gap-1"
-                >
-                  <Square className="w-3 h-3" />
-                  停止服务
-                </button>
-              )}
-
-              <button
-                onClick={() => setShowServiceDetails(!showServiceDetails)}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-                title="服务详情"
-              >
-                {showServiceDetails ? <ChevronUp className="w-4 h-4 text-text-tertiary" /> : <ChevronDown className="w-4 h-4 text-text-tertiary" />}
-              </button>
-            </div>
-          )}
+          {renderServiceControl()}
         </div>
       </header>
 
@@ -521,7 +565,10 @@ const ToolPanel: React.FC = () => {
               <div className="flex-1 flex items-center gap-1.5">
                 <AlertCircle className="w-3 h-3 text-red-500" />
                 <span className="text-red-500 truncate max-w-xs" title={ocrStatus.lastError}>
-                  错误: {ocrStatus.lastError}
+                  {ocrStatus.lastError.includes('OCR服务依赖') ? '依赖未安装或已损坏' : 
+                   ocrStatus.lastError.includes('端口') ? '端口冲突或配置错误' :
+                   ocrStatus.lastError.length > 50 ? ocrStatus.lastError.substring(0, 50) + '...' :
+                   ocrStatus.lastError}
                 </span>
               </div>
             )}
@@ -532,14 +579,14 @@ const ToolPanel: React.FC = () => {
                 <ul className="list-disc list-inside space-y-1">
                   <li>检查Python环境是否正确安装（建议Python 3.8+）</li>
                   <li>确保已安装所需依赖：pip install -r requirements.txt</li>
-                  <li>检查端口8766是否被其他程序占用</li>
+                  <li>检查端口是否被其他程序占用</li>
                   <li>尝试重启应用后再次启动服务</li>
                 </ul>
-                <div className="flex gap-2">
+                <div className="flex gap-2 mt-2">
                   <button
                     onClick={handleDiagnose}
                     disabled={isDiagnosing}
-                    className="mt-2 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
                   >
                     {isDiagnosing ? (
                       <RefreshCw className="w-3 h-3 animate-spin" />
@@ -551,7 +598,7 @@ const ToolPanel: React.FC = () => {
                   <button
                     onClick={handleInstallDeps}
                     disabled={isInstalling}
-                    className="mt-2 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
                   >
                     {isInstalling ? (
                       <RefreshCw className="w-3 h-3 animate-spin" />
@@ -781,7 +828,14 @@ const ToolPanel: React.FC = () => {
 
       {activeTab === 'settings' && (
         <div className="flex-1 overflow-auto p-4">
-          <OcrSettingsPanel addToast={addToast} checkOcrStatus={checkOcrStatus} />
+          <OcrSettingsPanel 
+            addToast={addToast} 
+            ocrStatus={ocrStatus}
+            onDiagnose={handleDiagnose}
+            onInstallDeps={handleInstallDeps}
+            isDiagnosing={isDiagnosing}
+            isInstalling={isInstalling}
+          />
         </div>
       )}
 
@@ -885,9 +939,16 @@ const ToolPanel: React.FC = () => {
         showConfirm={false}
       >
         {isInstalling ? (
-          <div className="flex items-center justify-center py-8">
-            <RefreshCw className="w-6 h-6 animate-spin text-green-500 mr-3" />
-            <span>正在安装依赖，这可能需要几分钟...</span>
+          <div className="space-y-3">
+            <div className="flex items-center py-2">
+              <RefreshCw className="w-6 h-6 animate-spin text-green-500 mr-3" />
+              <span>正在安装依赖，这可能需要几分钟...</span>
+            </div>
+            <div className="bg-gray-100 dark:bg-gray-900 p-3 rounded-lg max-h-64 overflow-auto">
+              <pre className="text-xs font-mono whitespace-pre-wrap text-gray-700 dark:text-gray-300">
+                {installProgress || '准备中...'}
+              </pre>
+            </div>
           </div>
         ) : installResult ? (
           <div className="space-y-4">
@@ -936,29 +997,27 @@ const DEFAULT_OCR_SETTINGS: OcrSettings = {
 
 interface OcrSettingsPanelProps {
   addToast: (toast: Omit<ToastItem, 'id'>) => void;
-  checkOcrStatus: () => void;
+  ocrStatus: OcrServiceStatus | null;
+  onDiagnose: () => void;
+  onInstallDeps: () => void;
+  isDiagnosing: boolean;
+  isInstalling: boolean;
 }
 
-const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrStatus }) => {
+const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ 
+  addToast, 
+  ocrStatus,
+  onDiagnose,
+  onInstallDeps,
+  isDiagnosing,
+  isInstalling,
+}) => {
   const [settings, setSettings] = useState<OcrSettings>(DEFAULT_OCR_SETTINGS);
-  const [serviceStatus, setServiceStatus] = useState<OcrServiceStatus | null>(null);
-  const [isStartingService, setIsStartingService] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isCheckingPort, setIsCheckingPort] = useState(false);
   const [portCheckResults, setPortCheckResults] = useState<{ [key: string]: boolean | null }>({});
-  const [isDiagnosing, setIsDiagnosing] = useState(false);
-  const [diagnoseResult, setDiagnoseResult] = useState<{ success: boolean; output: string; error?: string } | null>(null);
-  const [showDiagnoseModal, setShowDiagnoseModal] = useState(false);
-  const [isInstalling, setIsInstalling] = useState(false);
-  const [installResult, setInstallResult] = useState<{ success: boolean; output: string; error?: string } | null>(null);
-  const [showInstallModal, setShowInstallModal] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [serviceDir, setServiceDir] = useState<string>('');
 
   useEffect(() => {
-    const pluginData = (window as any).__PLUGIN_DATA__;
-    if (pluginData?.pluginDir) {
-      setServiceDir(pluginData.pluginDir + '/dist/python-service');
-    }
     const saved = localStorage.getItem('ocr-settings');
     if (saved) {
       try {
@@ -968,26 +1027,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
         console.error('解析OCR设置失败');
       }
     }
-    checkServiceStatus();
   }, []);
-
-  const checkServiceStatus = async () => {
-    try {
-      const result = await (window as any).electron?.ocr?.status();
-      if (result) {
-        setServiceStatus(result);
-      }
-    } catch (error) {
-      console.error('检查OCR状态失败:', error);
-      setServiceStatus({
-        available: false,
-        message: '检查服务状态失败',
-        status: 'error',
-        lastError: String(error),
-        canManualStart: true,
-      });
-    }
-  };
 
   const saveSettings = (newSettings: OcrSettings) => {
     localStorage.setItem('ocr-settings', JSON.stringify(newSettings));
@@ -999,56 +1039,6 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
   const handleSettingChange = <K extends keyof OcrSettings>(key: K, value: OcrSettings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
     setHasUnsavedChanges(true);
-  };
-
-  const handleStartService = async () => {
-    setIsStartingService(true);
-    try {
-      if (hasUnsavedChanges) {
-        addToast({ type: 'warning', message: '有未保存的设置，请先保存后再启动服务' });
-        setIsStartingService(false);
-        return;
-      }
-      const result = await (window as any).electron?.ocr?.start(serviceDir, {
-        httpPort: settings.httpPort,
-        wsPort: settings.wsPort,
-        pythonPath: settings.pythonPath,
-        autoRestart: settings.autoRestart,
-        maxRestarts: settings.maxRestarts,
-      });
-      if (result?.success) {
-        addToast({ type: 'success', message: result.message });
-        await checkServiceStatus();
-        checkOcrStatus();
-      } else {
-        addToast({ type: 'error', message: result?.message || '启动失败，请检查Python环境配置' });
-        await checkServiceStatus();
-        checkOcrStatus();
-      }
-    } catch (error) {
-      console.error('启动服务失败:', error);
-      addToast({ type: 'error', message: '启动服务异常: ' + String(error) });
-      await checkServiceStatus();
-      checkOcrStatus();
-    } finally {
-      setIsStartingService(false);
-    }
-  };
-
-  const handleStopService = async () => {
-    try {
-      const result = await (window as any).electron?.ocr?.stop();
-      if (result?.success) {
-        addToast({ type: 'info', message: result.message });
-        await checkServiceStatus();
-        checkOcrStatus();
-      } else {
-        addToast({ type: 'error', message: result?.message || '停止失败' });
-      }
-    } catch (error) {
-      console.error('停止服务失败:', error);
-      addToast({ type: 'error', message: '停止服务异常: ' + String(error) });
-    }
   };
 
   const handleCheckPort = async (port: number, portType: 'http' | 'ws') => {
@@ -1070,61 +1060,6 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
     }
   };
 
-  const handleDiagnose = async () => {
-    setIsDiagnosing(true);
-    setShowDiagnoseModal(true);
-    setDiagnoseResult(null);
-    try {
-      const result = await (window as any).electron?.ocr?.diagnose(serviceDir);
-      const finalResult = result || { success: false, output: '', error: '诊断功能不可用' };
-      setDiagnoseResult(finalResult);
-      if (finalResult.success) {
-        addToast({ type: 'success', message: '诊断完成，未发现问题' });
-      } else {
-        addToast({ type: 'warning', message: '诊断完成，发现问题请查看详情' });
-      }
-    } catch (error) {
-      console.error('诊断失败:', error);
-      setDiagnoseResult({
-        success: false,
-        output: '',
-        error: String(error),
-      });
-      addToast({ type: 'error', message: '诊断运行异常' });
-    } finally {
-      setIsDiagnosing(false);
-    }
-  };
-
-  const handleInstallDeps = async (force = false) => {
-    const safeForce = typeof force === 'boolean' ? force : false;
-    setIsInstalling(true);
-    setShowInstallModal(true);
-    setInstallResult(null);
-    try {
-      const result = await (window as any).electron?.ocr?.installDeps(serviceDir, safeForce);
-      const finalResult = result || { success: false, output: '', error: '安装功能不可用' };
-      setInstallResult(finalResult);
-      if (finalResult.success) {
-        addToast({ type: 'success', message: '依赖安装成功！现在可以启动OCR服务了' });
-        await checkServiceStatus();
-        checkOcrStatus();
-      } else {
-        addToast({ type: 'error', message: '依赖安装失败，请查看详情' });
-      }
-    } catch (error) {
-      console.error('安装失败:', error);
-      setInstallResult({
-        success: false,
-        output: '',
-        error: String(error),
-      });
-      addToast({ type: 'error', message: '依赖安装运行异常' });
-    } finally {
-      setIsInstalling(false);
-    }
-  };
-
   const handleSelectPythonPath = async () => {
     try {
       const result = await (window as any).electron?.ocr?.selectPythonPath();
@@ -1139,7 +1074,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
   };
 
   const handleSave = () => {
-    if (serviceStatus?.available) {
+    if (ocrStatus?.available) {
       addToast({ type: 'warning', message: '请先停止服务后再保存设置' });
       return;
     }
@@ -1168,65 +1103,18 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
       </div>
 
       <div className="divide-y divide-gray-100 dark:divide-gray-700">
-        <div className="flex items-center justify-between px-3 py-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-700 dark:text-gray-300">服务状态</span>
-            {serviceStatus === null ? (
-              <span className="text-xs text-text-tertiary flex items-center gap-1">
-                <RefreshCw className="w-3 h-3 animate-spin" />
-                检查中...
-              </span>
-            ) : (
-              <div className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 ${
-                serviceStatus.available ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-              }`}>
-                {serviceStatus.available ? (
-                  <CheckCircle className="w-3 h-3" />
-                ) : (
-                  <AlertCircle className="w-3 h-3" />
-                )}
-                {serviceStatus.available ? '运行中' : '已停止'}
-              </div>
-            )}
+        {ocrStatus?.available && (
+          <div className="px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
+            <span className="text-xs text-amber-700 dark:text-amber-400">
+              服务运行中，如需修改配置请先在顶部停止服务
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            {serviceStatus?.canManualStart && !serviceStatus.available && (
-              <button
-                onClick={handleStartService}
-                disabled={isStartingService || hasUnsavedChanges}
-                className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
-              >
-                {isStartingService ? (
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Play className="w-3 h-3" />
-                )}
-                {isStartingService ? '启动中...' : '启动'}
-              </button>
-            )}
-            {serviceStatus?.available && (
-              <button
-                onClick={handleStopService}
-                className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-600 text-xs rounded-md transition-colors flex items-center gap-1"
-              >
-                <Square className="w-3 h-3" />
-                停止
-              </button>
-            )}
-            <button
-              onClick={checkServiceStatus}
-              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-              title="刷新状态"
-            >
-              <RefreshCw className="w-3 h-3 text-gray-500" />
-            </button>
-          </div>
-        </div>
+        )}
 
         <div className="px-3 py-2">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-sm text-gray-700 dark:text-gray-300">端口配置</span>
-            {serviceStatus?.available && (
+            {ocrStatus?.available && (
               <span className="text-xs text-amber-600">（运行中，修改需停止服务）</span>
             )}
           </div>
@@ -1357,7 +1245,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
           </div>
           <div className="flex gap-2">
             <button
-              onClick={handleDiagnose}
+              onClick={onDiagnose}
               disabled={isDiagnosing}
               className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
             >
@@ -1369,7 +1257,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
               {isDiagnosing ? '诊断中...' : '运行诊断'}
             </button>
             <button
-              onClick={handleInstallDeps}
+              onClick={onInstallDeps}
               disabled={isInstalling}
               className="px-2 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
             >
@@ -1396,7 +1284,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
             )}
             <button
               onClick={handleSave}
-              disabled={!hasUnsavedChanges || serviceStatus?.available}
+              disabled={!hasUnsavedChanges || !!ocrStatus?.available}
               className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               保存设置
@@ -1404,82 +1292,6 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({ addToast, checkOcrS
           </div>
         </div>
       </div>
-
-      <Modal
-        title="OCR 服务诊断结果"
-        isOpen={showDiagnoseModal}
-        onClose={() => setShowDiagnoseModal(false)}
-        showCancel={false}
-        showConfirm={false}
-      >
-        <div className="max-h-96 overflow-auto">
-          {isDiagnosing ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mr-3" />
-              <span className="text-gray-600 dark:text-gray-400">正在运行诊断...</span>
-            </div>
-          ) : diagnoseResult ? (
-            <div className="space-y-4">
-              <div className={`p-3 rounded-lg text-sm ${diagnoseResult.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                {diagnoseResult.success ? '✓ 诊断通过，未发现问题' : '✗ 诊断完成，发现问题'}
-              </div>
-              {diagnoseResult.output && (
-                <div className="bg-gray-100 dark:bg-gray-900 p-3 rounded-lg">
-                  <pre className="text-xs font-mono whitespace-pre-wrap text-gray-700 dark:text-gray-300">
-                    {diagnoseResult.output}
-                  </pre>
-                </div>
-              )}
-              {diagnoseResult.error && (
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                  <div className="text-xs font-medium text-red-600 mb-1">错误信息:</div>
-                  <pre className="text-xs font-mono text-red-600">
-                    {diagnoseResult.error}
-                  </pre>
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-      </Modal>
-
-      <Modal
-        title="安装 Python 依赖"
-        isOpen={showInstallModal}
-        onClose={() => setShowInstallModal(false)}
-        showCancel={false}
-        showConfirm={false}
-      >
-        <div className="max-h-96 overflow-auto">
-          {isInstalling ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-green-500 mr-3" />
-              <span className="text-gray-600 dark:text-gray-400">正在安装依赖，这可能需要几分钟...</span>
-            </div>
-          ) : installResult ? (
-            <div className="space-y-4">
-              <div className={`p-3 rounded-lg text-sm ${installResult.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                {installResult.success ? '✓ 依赖安装成功！' : '✗ 依赖安装失败'}
-              </div>
-              {installResult.output && (
-                <div className="bg-gray-100 dark:bg-gray-900 p-3 rounded-lg">
-                  <pre className="text-xs font-mono whitespace-pre-wrap text-gray-700 dark:text-gray-300">
-                    {installResult.output}
-                  </pre>
-                </div>
-              )}
-              {installResult.error && (
-                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                  <div className="text-xs font-medium text-red-600 mb-1">错误信息:</div>
-                  <pre className="text-xs font-mono text-red-600">
-                    {installResult.error}
-                  </pre>
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-      </Modal>
     </div>
   );
 };

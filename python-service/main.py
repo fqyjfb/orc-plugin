@@ -48,32 +48,6 @@ missing_deps = check_imports()
 if missing_deps:
     logger.error(f"依赖检查失败: {', '.join(missing_deps)}")
     logger.error("请运行安装依赖: python install_deps.py --force")
-    
-    import json
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    
-    class ErrorHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(503)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({
-                'success': False,
-                'error': 'OCR服务依赖未安装或已损坏',
-                'message': '请在插件设置页面点击"安装依赖"按钮修复',
-                'missing': missing_deps
-            }).encode('utf-8'))
-        
-        def log_message(self, format, *args):
-            pass
-    
-    port = int(os.environ.get("HTTP_PORT", 8766))
-    server = HTTPServer(('127.0.0.1', port), ErrorHandler)
-    logger.error(f"错误服务监听在端口 {port}，等待依赖安装后重启...")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
     sys.exit(1)
 
 
