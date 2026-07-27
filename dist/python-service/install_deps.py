@@ -8,34 +8,36 @@ import sys
 import os
 import shutil
 
-def cleanup_corrupted_package(site_packages, package_name):
-    pkg_dir = os.path.join(site_packages, package_name)
-    dist_info_dir = None
-    for entry in os.listdir(site_packages):
-        if entry.startswith(package_name.replace('-', '_')) and entry.endswith('.dist-info'):
-            dist_info_dir = os.path.join(site_packages, entry)
-            break
-        if entry.startswith(package_name.replace('-', '-')) and entry.endswith('.dist-info'):
-            dist_info_dir = os.path.join(site_packages, entry)
-            break
-    
-    cleaned = False
-    if os.path.isdir(pkg_dir):
-        init_file = os.path.join(pkg_dir, '__init__.py')
+def cleanup_all_corrupted(site_packages):
+    cleaned_count = 0
+    entries = os.listdir(site_packages)
+    for entry in entries:
+        entry_path = os.path.join(site_packages, entry)
+        if not os.path.isdir(entry_path):
+            continue
+        
+        is_dist_info = entry.endswith('.dist-info')
+        is_cache = entry.startswith('__')
+        
+        if is_cache:
+            continue
+        
+        if is_dist_info:
+            record_file = os.path.join(entry_path, 'RECORD')
+            meta_file = os.path.join(entry_path, 'METADATA')
+            if not os.path.isfile(record_file) or not os.path.isfile(meta_file):
+                print(f"  [WARN] Removing corrupted dist-info: {entry}")
+                shutil.rmtree(entry_path, ignore_errors=True)
+                cleaned_count += 1
+            continue
+        
+        init_file = os.path.join(entry_path, '__init__.py')
         if not os.path.isfile(init_file):
-            print(f"[WARN] Found corrupted {package_name} (missing __init__.py), removing...")
-            shutil.rmtree(pkg_dir, ignore_errors=True)
-            cleaned = True
+            print(f"  [WARN] Removing corrupted package: {entry} (missing __init__.py)")
+            shutil.rmtree(entry_path, ignore_errors=True)
+            cleaned_count += 1
     
-    if dist_info_dir and os.path.isdir(dist_info_dir):
-        record_file = os.path.join(dist_info_dir, 'RECORD')
-        meta_file = os.path.join(dist_info_dir, 'METADATA')
-        if not os.path.isfile(record_file) or not os.path.isfile(meta_file):
-            print(f"[WARN] Found corrupted {package_name} dist-info, removing...")
-            shutil.rmtree(dist_info_dir, ignore_errors=True)
-            cleaned = True
-    
-    return cleaned
+    return cleaned_count
 
 def verify_package(module_name, import_names=None):
     try:
@@ -75,7 +77,7 @@ def main():
         print("[INFO] Force reinstall mode enabled")
     
     try:
-        print("\n[INFO] Checking for corrupted packages...")
+        print("\n[INFO] Scanning for corrupted packages...")
         
         site_packages = None
         for p in sys.path:
@@ -84,15 +86,17 @@ def main():
                 break
         
         if site_packages:
-            packages_to_check = ['fastapi', 'uvicorn', 'pydantic', 'PIL']
-            for pkg in packages_to_check:
-                cleanup_corrupted_package(site_packages, pkg)
+            cleaned = cleanup_all_corrupted(site_packages)
+            if cleaned > 0:
+                print(f"[INFO] Cleaned {cleaned} corrupted items")
+            else:
+                print("[INFO] No corrupted packages found")
         
-        print("\n[INFO] Installing dependencies (force reinstall)...")
+        print("\n[INFO] Installing dependencies...")
         install_cmd = [
             sys.executable,
             "-m", "pip", "install",
-            "--force-reinstall",
+            "--ignore-installed",
             "--no-cache-dir",
             "-r", requirements_path
         ]
@@ -123,10 +127,9 @@ def main():
                 all_ok = False
         
         if not all_ok:
-            print("\n[ERROR] Some packages are corrupted. Try:")
+            print("\n[ERROR] Some packages failed verification. Try:")
             print("  1. Close all applications using Python")
-            print("  2. Run: pip uninstall -y fastapi uvicorn pydantic Pillow")
-            print("  3. Run: pip install -r requirements.txt")
+            print("  2. Run this script again with --force flag")
             return 1
         
         print("\n" + "=" * 60)
@@ -134,13 +137,6 @@ def main():
         print("=" * 60)
         return 0
         
-    except subprocess.CalledProcessError as e:
-        print(f"\n[ERROR] Installation failed with exit code {e.returncode}")
-        print("\nPlease try:")
-        print("  1. Check your internet connection")
-        print("  2. Run with admin/sudo privileges if needed")
-        print("  3. Try manually: pip install --force-reinstall -r requirements.txt")
-        return 1
     except Exception as e:
         print(f"\n[ERROR] Installation failed: {str(e)}")
         return 1
