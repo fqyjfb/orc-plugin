@@ -1,7 +1,7 @@
 {
   "name": "plugin-orc",
   "version": "1.1.2",
-  "description": "OCR文字识别工具，支持图片上传、粘贴识别、历史记录管理",
+  "description": "OCR文字识别工具，支持图片上传、粘贴识别、历史记录管理 - 修复PIL依赖检查",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
