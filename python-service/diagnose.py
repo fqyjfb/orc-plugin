@@ -67,6 +67,40 @@ def check_dependencies():
 
     return all_installed
 
+def get_process_name(pid):
+    """通过PID查询进程名"""
+    try:
+        if sys.platform == 'win32':
+            result = subprocess.run(
+                f'tasklist /FI "PID eq {pid}" /NH /FO CSV',
+                shell=True,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace'
+            )
+            if result.stdout.strip():
+                # CSV格式: "python.exe","1234","Console","1","12,345 K"
+                parts = result.stdout.strip().split('","')
+                if parts:
+                    name = parts[0].strip('"')
+                    return name
+        else:
+            result = subprocess.run(
+                f'ps -p {pid} -o comm=',
+                shell=True,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace'
+            )
+            if result.stdout.strip():
+                return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 def check_port(port=8766):
     print("\n" + "=" * 60)
     print(f"Port {port} Check")
@@ -94,6 +128,38 @@ def check_port(port=8766):
     if result.stdout.strip():
         print(f"[WARN] Port {port} is occupied:")
         print(result.stdout)
+
+        # 提取PID并查询进程名
+        pids = set()
+        for line in result.stdout.strip().split('\n'):
+            parts = line.split()
+            if sys.platform == 'win32':
+                # Windows netstat: Proto LocalAddr ForeignAddr State PID
+                if len(parts) >= 5:
+                    pid = parts[-1].strip()
+                    if pid.isdigit():
+                        pids.add(pid)
+            else:
+                # lsof: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+                if len(parts) >= 2 and parts[1].isdigit():
+                    pids.add(parts[1])
+
+        if pids:
+            print("\n占用端口的进程详情:")
+            for pid in sorted(pids):
+                name = get_process_name(pid)
+                if name:
+                    print(f"  PID {pid}: {name}")
+                else:
+                    print(f"  PID {pid}: (无法获取进程名)")
+
+            print(f"\n清理建议:")
+            if sys.platform == 'win32':
+                print(f"  taskkill /PID {' /PID '.join(sorted(pids))} /F")
+            else:
+                print(f"  kill -9 {' '.join(sorted(pids))}")
+            print(f"  或在插件设置页面点击 '清理残留进程' 按钮")
+
         return False
     else:
         print(f"[OK] Port {port} is available")
@@ -127,6 +193,13 @@ def check_service_files():
     return all_exist
 
 def main():
+    # 从命令行参数或环境变量读取端口
+    port = 8766
+    if len(sys.argv) > 1 and sys.argv[1].isdigit():
+        port = int(sys.argv[1])
+    elif os.environ.get("HTTP_PORT", "").isdigit():
+        port = int(os.environ["HTTP_PORT"])
+
     print("\n")
     print("+" + "=" * 58 + "+")
     print("|" + " " * 15 + "OCR Service Diagnostics" + " " * 22 + "|")
@@ -136,7 +209,7 @@ def main():
         ("Python Version", check_python_version()),
         ("Service Files", check_service_files()),
         ("Dependencies", check_dependencies()),
-        ("Port Check", check_port()),
+        ("Port Check", check_port(port)),
     ]
 
     print("\n" + "=" * 60)

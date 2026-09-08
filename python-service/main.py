@@ -88,10 +88,34 @@ from api.routers.ocr import router as ocr_router
 app.include_router(ocr_router)
 
 
-def run_http_server(host: str = "127.0.0.1", port: int = 8766):
-    logger.info(f"启动 OCR 服务: http://{host}:{port}")
+def run_http_server(host: str = "127.0.0.1", port: int = 8766, max_retries: int = 20):
     import uvicorn
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    import socket
+
+    for attempt in range(max_retries):
+        current_port = port + attempt
+        try:
+            # 预检端口是否可用
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+                s.bind((host, current_port))
+        except OSError:
+            logger.warning(f"端口 {current_port} 被占用，尝试下一个端口...")
+            continue
+
+        logger.info(f"启动 OCR 服务: http://{host}:{current_port}")
+        try:
+            uvicorn.run(app, host=host, port=current_port, log_level="info")
+            return
+        except OSError as e:
+            err_str = str(e)
+            if "10048" in err_str or "EADDRINUSE" in err_str or "Address already in use" in err_str:
+                logger.warning(f"端口 {current_port} 绑定失败，尝试下一个端口...")
+                continue
+            raise
+
+    logger.error(f"无法找到可用端口（尝试了 {port} - {port + max_retries - 1}）")
+    sys.exit(1)
 
 
 def main():

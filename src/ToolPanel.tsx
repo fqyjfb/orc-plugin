@@ -54,6 +54,10 @@ const TEXT_PRIMARY = '#111827';
 const TEXT_SECONDARY = '#6b7280';
 const TEXT_TERTIARY = '#9ca3af';
 
+// OCR 服务默认端口配置（仅作为用户未设置时的兜底默认值，不覆盖用户已保存的端口）
+const DEFAULT_HTTP_PORT = 8766;
+const DEFAULT_WS_PORT = 8765;
+
 const ToolPanel: React.FC = () => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [imagePreview, setImagePreview] = useState<string>('');
@@ -135,14 +139,14 @@ const ToolPanel: React.FC = () => {
   };
 
   const getServiceConfig = useCallback(() => {
-    let config = { httpPort: 8766, wsPort: 8765, pythonPath: '', autoRestart: true, maxRestarts: 3 };
+    let config = { httpPort: DEFAULT_HTTP_PORT, wsPort: DEFAULT_WS_PORT, pythonPath: '', autoRestart: true, maxRestarts: 3 };
     try {
       const saved = localStorage.getItem('ocr-settings');
       if (saved) {
         const parsed = JSON.parse(saved);
         config = {
-          httpPort: parsed.httpPort || 8766,
-          wsPort: parsed.wsPort || 8765,
+          httpPort: parsed.httpPort || DEFAULT_HTTP_PORT,
+          wsPort: parsed.wsPort || DEFAULT_WS_PORT,
           pythonPath: parsed.pythonPath || '',
           autoRestart: parsed.autoRestart !== false,
           maxRestarts: parsed.maxRestarts || 3,
@@ -316,7 +320,8 @@ const ToolPanel: React.FC = () => {
     setSelectedBlockIndex(null);
 
     try {
-      const result: OcrResult = await (window as any).electron?.ocr?.recognize(imageBase64, serviceDir);
+      const config = getServiceConfig();
+      const result: OcrResult = await (window as any).electron?.ocr?.recognize(imageBase64, serviceDir, config);
 
       if (currentRequestId !== requestIdRef.current) {
         return;
@@ -343,7 +348,7 @@ const ToolPanel: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [addToast, saveToHistory, serviceDir]);
+  }, [addToast, saveToHistory, serviceDir, getServiceConfig]);
 
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
@@ -987,8 +992,8 @@ interface OcrSettings {
 }
 
 const DEFAULT_OCR_SETTINGS: OcrSettings = {
-  httpPort: 8766,
-  wsPort: 8765,
+  httpPort: DEFAULT_HTTP_PORT,
+  wsPort: DEFAULT_WS_PORT,
   idleTimeoutMinutes: 10,
   autoRestart: true,
   maxRestarts: 3,
@@ -1016,6 +1021,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isCheckingPort, setIsCheckingPort] = useState(false);
   const [portCheckResults, setPortCheckResults] = useState<{ [key: string]: boolean | null }>({});
+  const [isKillingProcess, setIsKillingProcess] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('ocr-settings');
@@ -1078,6 +1084,18 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({
       addToast({ type: 'warning', message: '请先停止服务后再保存设置' });
       return;
     }
+    if (settings.httpPort < 1024 || settings.httpPort > 65535) {
+      addToast({ type: 'error', message: 'HTTP端口必须在 1024-65535 范围内' });
+      return;
+    }
+    if (settings.wsPort < 1024 || settings.wsPort > 65535) {
+      addToast({ type: 'error', message: 'WebSocket端口必须在 1024-65535 范围内' });
+      return;
+    }
+    if (settings.httpPort === settings.wsPort) {
+      addToast({ type: 'error', message: 'HTTP端口和WebSocket端口不能相同' });
+      return;
+    }
     saveSettings(settings);
   };
 
@@ -1085,6 +1103,23 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({
     setSettings(DEFAULT_OCR_SETTINGS);
     setHasUnsavedChanges(true);
     addToast({ type: 'info', message: '已重置为默认设置，请保存' });
+  };
+
+  const handleKillStaleProcess = async (port: number) => {
+    setIsKillingProcess(true);
+    try {
+      const result = await (window as any).electron?.ocr?.killStaleProcess(port);
+      if (result?.success) {
+        addToast({ type: result.killed ? 'success' : 'info', message: result.message });
+      } else {
+        addToast({ type: 'error', message: result?.error || '清理残留进程失败' });
+      }
+    } catch (error) {
+      console.error('清理残留进程失败:', error);
+      addToast({ type: 'error', message: '清理残留进程异常: ' + String(error) });
+    } finally {
+      setIsKillingProcess(false);
+    }
   };
 
   const getPortCheckIcon = (portType: 'http' | 'ws', port: number) => {
@@ -1243,7 +1278,7 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({
           <div className="flex items-center gap-2 mb-2">
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">故障排查</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={onDiagnose}
               disabled={isDiagnosing}
@@ -1267,6 +1302,19 @@ const OcrSettingsPanel: React.FC<OcrSettingsPanelProps> = ({
                 <Play className="w-3 h-3" />
               )}
               {isInstalling ? '安装中...' : '安装依赖'}
+            </button>
+            <button
+              onClick={() => handleKillStaleProcess(settings.httpPort)}
+              disabled={isKillingProcess}
+              className="px-2 py-1 bg-red-500 hover:bg-red-600 text-white text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
+              title={`清理占用端口 ${settings.httpPort} 的残留进程`}
+            >
+              {isKillingProcess ? (
+                <RefreshCw className="w-3 h-3 animate-spin" />
+              ) : (
+                <Trash2 className="w-3 h-3" />
+              )}
+              {isKillingProcess ? '清理中...' : '清理残留进程'}
             </button>
           </div>
         </div>
