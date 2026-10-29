@@ -393,14 +393,15 @@ const ToolPanel: React.FC = () => {
                   <textarea
                     value={editableResult}
                     onChange={(e) => setEditableResult(e.target.value)}
-                    className="w-full h-full resize-none bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm font-mono text-gray-800"
+                    className="w-full h-full resize-none rounded-lg p-3 text-sm font-mono"
                     placeholder="编辑识别结果..."
+                    style={{ backgroundColor: '#f9fafb', borderColor: '#e5e7eb', color: '#1f2937' }}
                   />
                 ) : (
                   <div className="space-y-2">
                     {ocrBlocks.length > 0 && (
-                      <div className="mb-3 p-2 bg-gray-100 rounded text-xs max-h-48 overflow-auto">
-                        <div className="text-text-tertiary mb-2 sticky top-0 bg-gray-100">
+                      <div className="mb-3 p-2 rounded text-xs max-h-48 overflow-auto" style={{ backgroundColor: '#f3f4f6' }}>
+                        <div className="mb-2 sticky top-0" style={{ color: '#9ca3af', backgroundColor: '#f3f4f6' }}>
                           识别详情（点击高亮对应区域）：
                         </div>
                         <div className="space-y-1">
@@ -423,7 +424,7 @@ const ToolPanel: React.FC = () => {
                                 >
                                   {index + 1}
                                 </span>
-                                <span className="text-text-secondary flex-1 truncate">
+                                <span className="flex-1 truncate" style={{ color: '#6b7280' }}>
                                   {block.text.substring(0, 40)}
                                   {block.text.length > 40 ? '...' : ''}
                                 </span>
@@ -439,17 +440,17 @@ const ToolPanel: React.FC = () => {
                         </div>
                       </div>
                     )}
-                    <pre className="text-sm font-mono text-gray-800 whitespace-pre-wrap bg-gray-50 p-3 rounded-lg border border-gray-200 max-h-64 overflow-auto">
+                    <pre className="text-sm font-mono whitespace-pre-wrap bg-gray-50 p-3 rounded-lg border border-gray-200 max-h-64 overflow-auto" style={{ color: '#1f2937', borderColor: '#e5e7eb' }}>
                       {ocrResult}
                     </pre>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-500">
+              <div className="flex items-center justify-center h-full" style={{ color: '#6b7280' }}>
                 <div className="text-center">
                   <FileText className="w-16 h-16 opacity-50 mx-auto mb-4" />
-                  <p>识别结果将显示在这里</p>
+                  <p style={{ color: '#6b7280' }}>识别结果将显示在这里</p>
                 </div>
               </div>
             )}
@@ -458,14 +459,15 @@ const ToolPanel: React.FC = () => {
       </div>
 
       {history.length > 0 && (
-        <div className="border-t border-gray-200 bg-gray-50">
+        <div className="border-t bg-gray-50" style={{ borderTopColor: '#e5e7eb', backgroundColor: '#f9fafb' }}>
           <div className="flex items-center justify-between px-4 py-2">
-            <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+            <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#4b5563' }}>
               历史记录 ({history.length})
             </span>
             <button
               onClick={() => setConfirmClearHistory(true)}
-              className="text-xs text-red-500 hover:underline"
+              className="text-xs hover:underline"
+              style={{ color: '#ef4444' }}
             >
               清空历史
             </button>
@@ -475,14 +477,16 @@ const ToolPanel: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => handleHistoryClick(item)}
-                className="flex-shrink-0 p-2 bg-gray-100 hover:bg-white border border-gray-200 rounded-lg transition-colors text-left"
-                style={{ minWidth: 120 }}
+                className="flex-shrink-0 p-2 rounded-lg transition-colors text-left"
+                style={{ minWidth: 120, backgroundColor: '#f3f4f6', borderColor: '#e5e7eb' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ffffff'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#f3f4f6'; }}
               >
-                <div className="text-xs text-gray-600 truncate">
+                <div className="text-xs truncate" style={{ color: '#4b5563' }}>
                   {item.text.substring(0, 30)}
                   {item.text.length > 30 ? '...' : ''}
                 </div>
-                <div className="text-[10px] text-gray-500 mt-1">
+                <div className="text-[10px] mt-1" style={{ color: '#6b7280' }}>
                   {new Date(item.timestamp).toLocaleString()}
                 </div>
               </button>
@@ -508,7 +512,7 @@ const ToolPanel: React.FC = () => {
         onClose={() => setConfirmClearHistory(false)}
         onConfirm={handleClearHistory}
       >
-        <p>确定要清空所有历史记录吗？</p>
+        <p style={{ color: '#374151', lineHeight: '1.5' }}>确定要清空所有历史记录吗？</p>
       </Modal>
     </div>
   );

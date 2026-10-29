@@ -101,7 +101,7 @@ export const Modal: React.FC<{
             <X className="w-5 h-5" style={{ color: '#6b7280' }} />
           </button>
         </div>
-        <div className="flex-1 overflow-auto p-4">{children}</div>
+        <div className="flex-1 overflow-auto p-4" style={{ color: '#374151', lineHeight: '1.5' }}>{children}</div>
         {(showCancel || showConfirm) && (
           <div className="flex justify-end gap-2 px-4 py-3 border-t" style={{ borderTopColor: '#e5e7eb' }}>
             {showCancel && (
